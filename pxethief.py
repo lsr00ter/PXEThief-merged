@@ -15,6 +15,12 @@ import ipaddress
 import socket
 import platform
 import configparser
+
+from scapy.layers.dhcp import BOOTP, DHCP
+from scapy.layers.inet import UDP, IP
+from scapy.layers.l2 import Ether
+from scapy.layers.msrpce.msnrpc import hashes
+
 import media_variable_file_cryptography as media_crypto
 import math
 import lxml.etree as ET
@@ -212,6 +218,9 @@ def find_pxe_server():
             boot_file = next((opt[1] for opt in dhcp_options if isinstance(opt, tuple) and opt[0] == "boot-file-name"),None)
             if boot_file:
                 boot_file = boot_file.rstrip(b"\0").decode("utf-8") # DHCP option 67 is Bootfile Name
+        else:
+            print("[-] No tftp server received")
+            sys.exit(-1)
     else:
         print("[-] No DHCP responses received with PXE boot options")
         sys.exit(-1)
@@ -240,13 +249,13 @@ def get_variable_file_path(tftp_server):
     ('pxe_client_machine_identifier', b'\x00*\x8cM\x9d\xc1lBA\x83\x87\xef\xc6\xd8s\xc6\xd2'), #included by the client, but doesn't seem to be necessary in WDS PXE server configurations
     "end"])
 
-    ans = sr1(pkt,timeout=10,iface=conf.iface,verbose=2,filter="udp port 4011 or udp port 68") # sr return value: ans,unans/packetpair1,packetpair2 (i.e. PacketPairList)/sent packet,received packet/Layers(Ethernet,IP,UDP/TCP,BOOTP,DHCP)
+    ans = sr1(pkt,timeout=10,verbose=2,filter="udp port 4011 or udp port 68") # sr return value: ans,unans/packetpair1,packetpair2 (i.e. PacketPairList)/sent packet,received packet/Layers(Ethernet,IP,UDP/TCP,BOOTP,DHCP)
 
     #TODO: Make sure received packets are DHCP packets before next bit of code
     encrypted_key = None
     if ans:
         packet = ans
-        dhcp_options = packet[1][DHCP].options
+        dhcp_options = packet[IP][DHCP].options
 
         #Does the received packet contain DHCP Option 243? DHCP option 243 is used by SCCM to send the variable file location
         option_number, variables_file = next(opt for opt in dhcp_options if isinstance(opt, tuple) and opt[0] == 243)
